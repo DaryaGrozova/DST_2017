@@ -1,4 +1,4 @@
-package seminar5;
+package seminar6;
 
 public class Parser {
 
@@ -6,16 +6,16 @@ public class Parser {
         String[] parsMas = line.split(" ", 2);
 
         switch (parsMas[0]) {
-            // comand _ anyText
+            // comand _ anyText 
             case "echo":
-                return parsMas;               
+                return parsMas;
 
             // comand _ destination _ messegeText     
             case "msg":
-                return line.split(" ", 3); 
+                return line.split(" ", 3);                 
 
             default:
-                return line.split(" ");
-        }
+                return line.split(" ");                
+        }        
     }
 }
