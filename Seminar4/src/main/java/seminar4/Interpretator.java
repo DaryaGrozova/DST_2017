@@ -1,16 +1,19 @@
-package sem3;
+package seminar4;
 
-import lpi.server.rmi.IServer;
+import java.io.IOException;
+import lpi.server.soap.*;
 
 public class Interpretator {
     private final CommandProcessing comP;
     private final Parser parser = new Parser(); 
+    
 
-    public Interpretator(IServer ob) {
+    public Interpretator(IChatServer ob) {
         comP = new CommandProcessing(ob);        
     }
     
     public void interpretator(String inLine){
+
         String[] comandMas = parser.parsForComand(inLine);
         try {
             switch (comandMas[0]) {
@@ -41,11 +44,12 @@ public class Interpretator {
                 case "exit":
                     comP.exit();
                     break;
+
                 default:
                     System.out.println("No this comand");
                     break;
             }
-        } catch (Exception ex) {
+        } catch (ArgumentFault | ServerFault | LoginFault | IOException ex) {
             System.out.println("Interpretator problem");
         }
     }

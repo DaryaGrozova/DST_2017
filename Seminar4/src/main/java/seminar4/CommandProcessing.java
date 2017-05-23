@@ -1,10 +1,10 @@
-package sem3;
+package seminar4;
 
 import java.io.*;
 import java.util.*;
+import lpi.server.soap.*;
+import java.nio.file.Files;
 import java.rmi.RemoteException;
-import lpi.server.rmi.IServer;
-import lpi.server.rmi.IServer.*;
 
 public class CommandProcessing {
 
@@ -13,20 +13,28 @@ public class CommandProcessing {
     private static final int MESSAGE_PARAMETERS_LENGTH = 3;
     private static final int FILE_PARAMETERS_LENGTH = 3;
 
-    private final IServer iServ;
+    private final IChatServer iServ;
 
-    public CommandProcessing(IServer iServ) {
+    public CommandProcessing(IChatServer iServ) {
         this.iServ = iServ;
     }
 
-    public void ping() throws RemoteException {
-        iServ.ping();
-        System.out.println("Ping succesfull");
+    public void ping() {
+        try {
+            iServ.ping();
+            System.out.println("Ping succesfull");
+        } catch (Exception ex) {
+            System.out.println("connections problem");
+        }
     }
 
     public void echo(String[] comandMas) throws RemoteException {
-        if (isNormalLength(comandMas, ECHO_PARAMETERS_LENGTH)) {
-            System.out.println(iServ.echo(comandMas[1]));
+        try {
+            if (isNormalLength(comandMas, ECHO_PARAMETERS_LENGTH)) {
+                System.out.println(iServ.echo(comandMas[1]));
+            }
+        } catch (Exception ex) {
+            System.out.println("connections problem");
         }
     }
 
@@ -34,7 +42,7 @@ public class CommandProcessing {
     private static String myLogin = null;
     private static String sessionId = null;
 
-    public void login(String[] comandMas) throws RemoteException {
+    public void login(String[] comandMas) throws RemoteException, ArgumentFault, ServerFault, LoginFault {
         if (!isNormalLength(comandMas, LOGIN_PARAMETERS_LENGTH)) {
             return;
         }
@@ -45,6 +53,7 @@ public class CommandProcessing {
             System.out.println("You are logged");
             return;
         }
+
         if (sessionId != null) {
             iServ.exit(sessionId);
         }
@@ -52,40 +61,57 @@ public class CommandProcessing {
         if (myLogin == null) {
             timer.schedule(receive, 0, 1500);
         }
-        myLogin = login;
+        myLogin = comandMas[1];
     }
 
-    public void list() throws RemoteException {
+    public void list() throws RemoteException, ArgumentFault, ServerFault {
+
         if (isLogged(sessionId)) {
-            String[] onlineUser = iServ.listUsers(sessionId);
+            List<String> onlineUser = iServ.listUsers(sessionId);
             if (onlineUser != null) {
-                Arrays.toString(onlineUser);
+                for (String user : onlineUser) {
+                    System.out.println(user);
+                }
             }
         }
     }
 
-    public void msg(String[] comandMas) throws RemoteException {
+    public void msg(String[] comandMas) throws RemoteException, ArgumentFault, ServerFault {
         if (!isLogged(sessionId) || !isNormalLength(comandMas, MESSAGE_PARAMETERS_LENGTH) || !isItUser(comandMas[1])) {
             return;
         }
-        iServ.sendMessage(sessionId, new Message(comandMas[1], myLogin, comandMas[2]));
+        Message mess = new Message();
+        mess.setSender(myLogin);
+        mess.setReceiver(comandMas[1]);
+        mess.setMessage(comandMas[2]);
+
+        iServ.sendMessage(sessionId, mess);
         System.out.println("Message sent");
     }
 
-    public void file(String[] comandMas) throws IOException {
+    public void file(String[] comandMas) throws IOException, ArgumentFault, ServerFault {
         if (!isLogged(sessionId) || !isNormalLength(comandMas, FILE_PARAMETERS_LENGTH) || !isItUser(comandMas[1])) {
             return;
         }
         File file = new File(comandMas[2]);
+
         if (!file.exists()) {
             System.out.println("No this file");
             return;
         }
-        iServ.sendFile(sessionId, new FileInfo(comandMas[1], file));
+
+        FileInfo fille = new FileInfo();
+
+        fille.setSender(myLogin);
+        fille.setReceiver(comandMas[1]);
+        fille.setFilename(comandMas[2]);
+        fille.setFileContent(Files.readAllBytes(file.toPath()));
+
+        iServ.sendFile(sessionId, fille);
         System.out.println("File sent");
     }
 
-    public void receiveMsg() throws RemoteException {
+    public void receiveMsg() throws RemoteException, ArgumentFault, ServerFault {
         if (isLogged(sessionId)) {
             Message mess = iServ.receiveMessage(sessionId);
             if (mess == null) {
@@ -98,18 +124,19 @@ public class CommandProcessing {
         }
     }
 
-    public void receiveFile() throws RemoteException {
+    public void receiveFile() throws RemoteException, ArgumentFault, ServerFault {
         if (!isLogged(sessionId)) {
             return;
         }
         FileInfo file = iServ.receiveFile(sessionId);
         if (file == null) {
             if (flug) {
-                System.out.println("No message");
+                System.out.println("No file");
             }
             return;
         }
-        System.out.println(file.toString());
+        System.out.println("File from \"" + file.getSender() + "\" file name : \"" + file.getFilename() + "\"");
+
         try (FileOutputStream fos = new FileOutputStream(
                 new File(file.getSender() + "_" + file.getFilename()))) {
             fos.write(file.getFileContent());
@@ -118,11 +145,11 @@ public class CommandProcessing {
         }
     }
 
-    public void exit() throws RemoteException {
+    public void exit() throws RemoteException, ArgumentFault, ServerFault {
+        Client.flug = false;
         timer.cancel();
         iServ.exit(sessionId);
         System.out.println("Exit from server");
-        Client.flug = false;
     }
 
     private boolean isNormalLength(String[] comandMas, int validLength) {
@@ -153,6 +180,7 @@ public class CommandProcessing {
     }
 
     private boolean flug;
+
     TimerTask receive = new TimerTask() {
 
         @Override
@@ -163,7 +191,7 @@ public class CommandProcessing {
                 receiveFile();
                 activeUser();
                 flug = true;
-            } catch (RemoteException ex) {
+            } catch (RemoteException | ArgumentFault | ServerFault ex) {
                 System.out.println("Problem Timer task");
             }
         }
@@ -171,9 +199,9 @@ public class CommandProcessing {
 
     private final List<String> userStorage = new LinkedList<>();
 
-    private void activeUser() throws RemoteException {
+    private void activeUser() throws RemoteException, ArgumentFault, ServerFault {
         if (sessionId != null) {
-            List<String> onlineUser = Arrays.asList(iServ.listUsers(sessionId));
+            List<String> onlineUser = iServ.listUsers(sessionId);
 
             if (onlineUser == null) {
                 return;
